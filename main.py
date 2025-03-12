@@ -7,8 +7,8 @@ from OpenGL.GLU import *
 import imgui
 from imgui.integrations.pygame import PygameRenderer
 from pyglm import glm
-from functions import bvh_parser, motion_adapter
-from draw_humanoid import draw_humanoid
+from functions import bvh_parser, motion_adapter, get_pelvis_virtual
+from draw_humanoid import draw_humanoid, draw_virtual
 from utils import draw_axes, set_lights
 from tkinter import Tk, filedialog
 
@@ -39,7 +39,6 @@ def imgui_joint_tree(joint):
     imgui.set_item_allow_overlap()
     if imgui.is_item_clicked():
         selected_joint = joint
-        print("hi")
     if node_open:
         for child in joint.children:
             imgui_joint_tree(child)
@@ -137,8 +136,8 @@ def render():
               center.x, center.y, center.z,
               upVector.x, upVector.y, upVector.z)
     draw_axes()
-    root_position, _ = motion_adapter(root, motion_frames[frame_idx])
-    draw_humanoid(root_position, root)
+    root_position, _, ap, T = motion_adapter(root, motion_frames[frame_idx])
+    draw_humanoid(root_position, root, ap, T)
 
 def main():
     global frame_idx, frame_len, root, motion_frames, last_x, last_y, stop, loaded_file_path

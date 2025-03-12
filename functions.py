@@ -6,6 +6,8 @@ class Joint:
         self.channels = []
         self.children = []
         self.offset = [0,0,0]
+        self.position = None
+        self.rotation = []
         self.kinetics = np.identity(4, dtype=float)
 
 def bvh_parser(file_path):
@@ -82,13 +84,14 @@ def add_motion(node, motion_frame, idx=[0]):
 
     if node.name != "Site":
         if len(node.channels) == 6:
+            node.position = list(map(float, motion_frame[idx[0]:idx[0]+3]))
             idx[0] += 3
-            rotation = list(map(float, motion_frame[idx[0]:idx[0]+3]))
-            node.kinetics = compute_forward_kinetics(node,rotation)
+            node.rotation = list(map(float, motion_frame[idx[0]:idx[0]+3]))
+            node.kinetics = compute_forward_kinetics(node, node.rotation)
             idx[0] += 3
         elif len(node.channels) == 3:
-            rotation = list(map(float, motion_frame[idx[0]:idx[0]+3]))
-            node.kinetics = compute_forward_kinetics(node,rotation)
+            node.rotation = list(map(float, motion_frame[idx[0]:idx[0]+3]))
+            node.kinetics = compute_forward_kinetics(node, node.rotation)
             idx[0] += 3
 
     for child in node.children:
@@ -97,8 +100,15 @@ def add_motion(node, motion_frame, idx=[0]):
 def motion_adapter(root, motion_frame):
     add_motion(root, motion_frame, idx=[0])
     root_position = list(map(float, motion_frame[:3]))
+    ar = root.kinetics[:3, :3]
+    ap = np.array(root_position)
+    ap, ar = get_pelvis_virtual(ap, ar)
 
-    return root_position, root
+    T = np.eye(4)  # 단위행렬 생성 (4x4)
+    T[:3, :3] = ar  # 회전 행렬 설정
+    T[:3, 3] = root.offset  # 위치 벡터 설정
+
+    return root_position, root, ap, T
 
 def get_rotation_matrix(channel, angle_deg):
     theta = np.deg2rad(angle_deg)
@@ -142,3 +152,30 @@ def compute_forward_kinetics(node, rotations):
         for channel, angle in zip(channels, rotations):
             M = M @ get_rotation_matrix(channel, angle)
     return M
+
+def get_projection(v, onto):
+    onto_norm = onto / np.linalg.norm(onto)
+    proj = np.dot(v, onto_norm) * onto_norm
+    return proj
+
+def lookrotation(v, u):
+    u_hat = u/np.linalg.norm(u)
+    v_hat = v/np.linalg.norm(v)
+
+    vxu = np.cross(u_hat, v_hat)
+    t_hat = vxu/np.linalg.norm(vxu)
+
+    R = np.array([t_hat, np.cross(v_hat, t_hat), v_hat]).T
+    return R
+
+def get_pelvis_virtual(ap, ar):
+    upVector = np.array([0,1,0], dtype=float)
+    p = ap - get_projection(ap, upVector)
+    f = ar[:, 2]
+    r = lookrotation(f-get_projection(f, upVector), upVector)
+    ap_transformed = r.T @ (ap - p)
+    ar_transformed = r.T @ ar
+
+    return ap_transformed, ar_transformed
+    
+

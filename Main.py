@@ -36,8 +36,8 @@ state = {
 def resize(width, height):
     """
     glViewport사이즈를 조절하는 함수
-    @param width: 너비
-    @param height: 높이
+    :param width: 너비
+    :param height: 높이
     """
     glViewport(0, 0, width, height)
     glMatrixMode(GL_PROJECTION)

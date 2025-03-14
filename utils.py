@@ -33,9 +33,9 @@ normals = [
 def draw_colored_cube(size_x, size_y=-1, size_z=-1):
     """
     면을 구분하기 위한 3개의 색상을 texture로 가진 cube를 생성하는 함수입니다.
-    @param size_x: cube의 x길이
-    @param size_y: cube의 y길이
-    @param size_z: cube의 z길이
+    :param size_x: cube의 x길이
+    :param size_y: cube의 y길이
+    :param size_z: cube의 z길이
     """
     if (size_y < 0): size_y = size_x
     if (size_z < 0): size_z = size_x
@@ -54,7 +54,7 @@ def draw_colored_cube(size_x, size_y=-1, size_z=-1):
 def draw_colored_sphere(radius):
     """
     Quadric object인 sphere을 생성하기 위한 함수입니다.
-    @param radius: sphere의 크기
+    :param radius: sphere의 크기
     """
     quadric = gluNewQuadric()  # Quadric object 생성 (http://www.gisdeveloper.co.kr/?p=35)
     glPushMatrix()
@@ -146,9 +146,9 @@ def set_lights():
 def rotation_between_vectors(v1, v2):
     """
     vector v1과 v2 사이의 회전값을 구하는 함수입니다.
-    @param v1: 벡터 1
-    @param v2: 벡터 2
-    @return: 두 벡터 사이의 회전 행렬
+    :param v1: 벡터 1
+    :param v2: 벡터 2
+    :return: 두 벡터 사이의 회전 행렬
     """
     v1 = glm.normalize(v1)
     v2 = glm.normalize(v2)
@@ -166,8 +166,8 @@ def rotation_between_vectors(v1, v2):
 def bone_rotation(forward):
     """
     Skeleton 구조에서 뼈와 뼈사이의 회전을 구하는 함수입니다.
-    @param forward: 전방벡터값
-    @return: 회전행렬
+    :param forward: 전방벡터값
+    :return: 회전행렬
     """
     originalDir = glm.vec3(0, 1, 0)
     if glm.length2(glm.cross(originalDir, forward)) < 1e-6:

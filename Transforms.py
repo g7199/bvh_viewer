@@ -92,9 +92,9 @@ def motion_adapter(root, motion_frame):
     """
     root를 목표로 motion을 적용시키기 위한 함수입니다.
     add_motion 함수를 콜해 적용시키고 root position과 root를 return합니다.
-    @param root: 적용할 root
-    @param motion_frame: 모션 프레임값
-    @return: root_position과 root를 return
+    :param root: 적용할 root
+    :param motion_frame: 모션 프레임값
+    :return: root_position과 root를 return
     """
     add_motion(root, motion_frame, idx=[0])
     root_position = list(map(float, motion_frame[:3]))
@@ -104,9 +104,9 @@ def motion_adapter(root, motion_frame):
 def add_motion(node, motion_frame, idx=[0]):
     """
     모션을 root에 재귀적으로 더해주는 함수입니다.
-    @param node: 적용할 node, 재귀적으로 작동한다.
-    @param motion_frame: 모션프레임
-    @param idx: 인덱스
+    :param node: 적용할 node, 재귀적으로 작동한다.
+    :param motion_frame: 모션프레임
+    :param idx: 인덱스
     """
     if not node:
         return

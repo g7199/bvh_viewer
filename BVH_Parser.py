@@ -16,7 +16,7 @@ def bvh_parser(file_path):
     """
     BVH_Data를 받아서 parsing하는 함수입니다.
     이때 마지막 단계에서 virtual_root 노드를 추가로 더해 root Transform T로 사용합니다.
-    @param file_path: 파일 경로
+    :param file_path: 파일 경로
     """
     stack = []
     root = None
@@ -78,7 +78,7 @@ def bvh_parser(file_path):
 def check_bvh_structure(joint, is_root=False):
     """
     BVH_Data의 구조가 valid한지 재귀적으로 확인하는 함수입니다.
-    @param joint: 확인할 joint
+    :param joint: 확인할 joint
     """
     if joint.name == "virtual_root":
         if not joint.children:

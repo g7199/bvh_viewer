@@ -6,12 +6,21 @@ from utils import draw_colored_cube, draw_colored_sphere
 joint_size = 3
 
 def draw_humanoid(root_position, root_joint):
+    """
+    Skeleton을 그리기 위한 함수입니다.
+    @param root_position: skeleton을 그리기 시작할 position
+    @param root_joint: 그릴 joint
+    """
     glPushMatrix()
     glTranslatef(*root_position)
     draw_joint(root_joint)
     glPopMatrix()
 
 def draw_joint(joint):
+    """
+    Joint를 그리기 위한 함수입니다.
+    만약 joint면 관절을 표현하는 sphere를 그리고 아니라면 뼈대를 그립니다.
+    """
     glPushMatrix()
     glMultMatrixf(joint.kinetics.T.flatten())
     if joint.name != "joint_Root":
@@ -25,11 +34,13 @@ def draw_joint(joint):
     glPopMatrix()
 
 def draw_bone(offset):
+    """
+    Skeleton에서 뼈를 그리기 위한 함수입니다.
+    @param offset: 뼈 길이를 구하기 위한 값
+    """
     mid = [offset[0] / 2.0, offset[1] / 2.0, offset[2] / 2.0]
-    # Assuming bone_rotation and related functions are in utils.
     from utils import bone_rotation
     rot_quat = bone_rotation(glm.vec3(*offset))
-    # Convert quaternion to matrix using pyglm
     rot_mat = glm.mat4_cast(rot_quat)
     glPushMatrix()
     glTranslatef(*mid)
@@ -39,6 +50,13 @@ def draw_bone(offset):
     glPopMatrix()
 
 def draw_virtual_root_axis(virtual_root, rotation, axis_length=10.0):
+    """
+    root Transform T에서 조그만한 3차원 축을 그리기 위함입니다.
+    virtual root의 위치를 받아 rotation만큼 회전하여 그려 pelvis의 회전을 시각적으로 확인할 수 있습니다.
+    @param virtual_root: 축을 그릴 root
+    @param rotation: 적용할 회전값
+    @param axis_length: 축 크기 (기본값 10)
+    """
     pos = virtual_root.offset  # Assumed to be [x, y, z]
     glPushMatrix()
     glTranslatef(pos[0], pos[1], pos[2])

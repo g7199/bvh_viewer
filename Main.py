@@ -34,6 +34,11 @@ state = {
     }
 
 def resize(width, height):
+    """
+    glViewport사이즈를 조절하는 함수
+    @param width: 너비
+    @param height: 높이
+    """
     glViewport(0, 0, width, height)
     glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
@@ -43,9 +48,9 @@ def resize(width, height):
 
 
 def main():
-    # Initialize state dictionary to hold global parameters.
-
-    # Initialize pygame, OpenGL, and UI.
+    """
+    BVH_Viewer 의 main loop
+    """
     pygame.init()
     size = (800, 600)
     screen = pygame.display.set_mode(size, pygame.DOUBLEBUF | pygame.OPENGL | pygame.RESIZABLE)

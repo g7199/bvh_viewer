@@ -1,8 +1,11 @@
-# ui.py
 import imgui
 from tkinter import filedialog
 from BVH_Parser import bvh_parser
 def draw_control_panel(state):
+    """
+    Animation의 재생/멈춤 그리고 slider 바를 표시하는 Control Panel입니다.
+    @param state: Animation 정보를 담고있는 딕셔너리
+    """
     imgui.set_next_window_position(10, 10)
     imgui.begin("Control Panel")
     changed, value = imgui.slider_int("Slider", state['frame_idx']+1, 0, state['frame_len'])
@@ -17,6 +20,10 @@ def draw_control_panel(state):
     imgui.end()
 
 def draw_joint_tree(joint):
+    """
+    Skeleton의 Hierarchy를 표시하는 창입니다.
+    @param joint: 계층별로 존재하는 Joint를 그리기 위함입니다.
+    """
     node_open = imgui.tree_node(joint.name)
     if imgui.is_item_clicked():
         print("Joint selected:", joint.name)
@@ -26,6 +33,10 @@ def draw_joint_tree(joint):
         imgui.tree_pop()
 
 def draw_file_loader(state):
+    """
+    BVH_Data를 폴더 탐색기에서 직접 I/O 하기 위한 창입니다.
+    @param state: 현재 선택된 파일 경로를 담고 있는 state 딕셔너리
+    """
     imgui.set_next_window_position(550, 10, condition=imgui.ONCE)
     imgui.set_next_window_size(200, 100, condition=imgui.ONCE)
     imgui.begin("BVH Loader")

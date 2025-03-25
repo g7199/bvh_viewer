@@ -13,6 +13,7 @@ from BVH_Parser import bvh_parser, check_bvh_structure
 from Transforms import motion_adapter, get_pelvis_virtual, extract_yaw_rotation, translation_matrix, inverse_matrix, extract_xz_plane
 from Rendering import draw_humanoid, draw_virtual_root_axis
 from utils import draw_axes, set_lights
+from interpolate import interpolation, get_localized_motions, extract_pitch_roll_y
 import Events
 import UI
 
@@ -36,8 +37,11 @@ state = {
     'second_root': None,
     'second_motion_frames': None,
     'loaded_file_path': None,
-    'global_offset': np.eye(4)
+    'global_offset': np.eye(4),
+    'is_blending': False
 }
+
+a = []
 
 
 def resize(width, height):
@@ -102,36 +106,6 @@ def main():
         current_time = pygame.time.get_ticks() / 1000.0
         delta_time = current_time - previous_time
 
-        if not state['stop'] and state['motion_frames']:
-            # 현재 모션 프레임 업데이트
-            prev_frame = state['frame_idx']
-            state['frame_idx'] += 1
-
-            # 만약 현재 모션이 마지막 프레임이면, 두 번째 모션으로 retargeting 후 swap
-            if prev_frame == state['frame_len'] - 1:
-                if state['second_motion_frames'] is not None:
-                    # 첫 번째 모션의 마지막 프레임에서의 global root 포즈 계산
-                    T_final_global = state['root'].kinetics
-                    T_final_local = state['root'].children[0].kinetics
-
-                    hip_node_2 = state['second_root'].children[0]
-                    init_position, _ = motion_adapter(hip_node_2, state['second_motion_frames'][1])
-
-                    # pelvis에 대한 global 행렬
-                    T_init_global = translation_matrix(init_position) @ hip_node_2.kinetics
-                    T_init_local  = get_pelvis_virtual(T_init_global)
-                    T_root_init = T_init_global @ inverse_matrix(T_init_local)
-
-                    T_offset_global = T_final_global @ inverse_matrix(T_root_init)
-                    state['global_offset'] = T_offset_global
-
-                    # 모션 데이터, root, frame length 등을 swap
-                    state['motion_frames'], state['second_motion_frames'] = state['second_motion_frames'], state['motion_frames']
-                    state['root'], state['second_root'] = state['second_root'], state['root']
-                    state['frame_len'], state['second_frame_len'] = state['second_frame_len'], state['frame_len']
-                    state['frame_idx'] = 1  # 새 모션은 처음부터 시작
-
-            previous_time = current_time
 
         imgui.new_frame()
         UI.draw_control_panel(state)
@@ -155,10 +129,10 @@ def main():
             T_root_current  = T_global_pelvis @ inverse_matrix(T_local_pelvis)
 
             # 오프셋 적용(블렌딩용) → ‘새로운’ 루트/골반 행렬
-            T_new_root   = state['global_offset'] @ T_root_current
+            T_new_root = state['global_offset'] @ T_root_current
 
             # 실제로 캐릭터에 적용
-            state['root'].kinetics        = T_new_root
+            state['root'].kinetics = T_new_root
             state['root'].children[0].kinetics = T_local_pelvis
 
             # 캐릭터 그리기
@@ -168,10 +142,65 @@ def main():
             pure_yaw = extract_xz_plane(state['root'].kinetics @ hip_node.kinetics)
             draw_virtual_root_axis(pure_yaw)
 
+
         imgui.render()
         impl.render(imgui.get_draw_data())
         pygame.display.flip()
         clock.tick(60)
+
+        if not state['stop'] and state['motion_frames']:
+            # 현재 모션 프레임 업데이트
+            prev_frame = state['frame_idx']
+
+            # 만약 현재 모션이 마지막 프레임이면, 두 번째 모션으로 retargeting 후 swap
+            if prev_frame == state['frame_len'] - 1:
+                if not state["is_blending"]:
+                    T_final_global = state['root'].kinetics
+                    hip_node = state['root'].children[0]
+                    blending = interpolation(hip_node, state['motion_frames'], state['second_motion_frames'][3:], T_final_global, blended_len=30)
+                    
+
+                    init_position, _ = motion_adapter(hip_node, blending[0])
+
+                    T_init_global = translation_matrix(init_position) @ hip_node.kinetics
+                    T_init_local  = get_pelvis_virtual(T_init_global)
+
+                    T_root_init = T_init_global @ inverse_matrix(T_init_local)
+
+                    T_offset_global = T_final_global
+
+                    state['global_offset'] = T_offset_global
+
+                    state['motion_frames'] = blending
+                    state['frame_len'] = len(blending)
+                    state['frame_idx'] = 0
+                    state['is_blending'] = True
+
+                else:
+                    if state['second_motion_frames'] is not None:
+                        # 첫 번째 모션의 마지막 프레임에서의 global root 포즈 계산
+                        T_final_global = state['root'].kinetics             
+
+                        hip_node_2 = state['second_root'].children[0]
+                        init_position, _ = motion_adapter(hip_node_2, state['second_motion_frames'][1])
+
+                        # pelvis에 대한 global 행렬
+                        T_init_global = translation_matrix(init_position) @ hip_node_2.kinetics
+                        T_init_local  = get_pelvis_virtual(T_init_global)
+                        T_root_init = T_init_global @ inverse_matrix(T_init_local)
+
+                        T_offset_global = T_final_global @ inverse_matrix(T_root_init)
+                        state['global_offset'] = T_offset_global
+
+                        # 모션 데이터, root, frame length 등을 swap
+                        state['motion_frames'], state['second_motion_frames'] = state['second_motion_frames'], state['motion_frames']
+                        state['root'], state['second_root'] = state['second_root'], state['root']
+                        state['frame_len'], state['second_frame_len'] = state['second_frame_len'], state['frame_len']
+                        state['frame_idx'] = 3  # 새 모션은 처음부터 시작
+                        state['is_blending'] = False
+
+            previous_time = current_time
+            state['frame_idx'] += 1
 
     impl.shutdown()
     pygame.quit()

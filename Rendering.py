@@ -14,8 +14,8 @@ def draw_humanoid(root_position, root_joint):
     """
     glPushMatrix()
     #glTranslatef(*root_position)
-    glMultMatrixf(root_joint.kinetics.T.flatten())
-    draw_joint(root_joint.children[0])
+    #glMultMatrixf(root_joint.kinetics.T.flatten())
+    draw_joint(root_joint)
     #draw_joint(root_joint)
     
     glPopMatrix()

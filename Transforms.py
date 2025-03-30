@@ -140,3 +140,16 @@ def inverse_matrix(T):
     T_inv[:3, :3] = R_inv
     T_inv[:3, 3] = t_inv
     return T_inv
+
+def interpolate_frames(frame_a, frame_b, blend):
+    """
+    두 motion frame 사이를 Lerp를 사용해 interpolate하는 함수입니다.
+    :param frame_a: 첫번째 motion frame (list)
+    :param frame_b: 두번째 motion frame (list)
+    :param blend: Blend factor
+    :return: Blend된 motion
+    """
+    a = list(map(float, frame_a))
+    b = list(map(float, frame_b))
+    blended_frame = [(1 - blend) * a_val + blend * b_val for a_val, b_val in zip(a, b)]
+    return blended_frame

@@ -178,3 +178,4 @@ def bone_rotation(forward):
     else:
         rot = rotation_between_vectors(forward, originalDir)
     return rot
+

@@ -8,7 +8,7 @@ from imgui.integrations.pygame import PygameRenderer
 from pyglm import glm
 
 from BVH_Parser import bvh_parser, check_bvh_structure
-from Transforms import motion_adapter, extract_yaw_rotation, interpolate_frames, inverse_matrix, translation_matrix
+from Transforms import motion_adapter, extract_yaw_rotation, interpolate_frames, add_motion, inverse_matrix
 from Rendering import draw_humanoid, draw_virtual_root_axis
 from utils import draw_axes, set_lights
 import Events
@@ -34,8 +34,10 @@ state = {
         'current_animation': 0,
         'animations': [],
         'isInterpolating': False,
+        'blend': 0.8,
+        'T_offset': None,
     }
-
+local_frame = 0
 def resize(width, height):
     """
     glViewport사이즈를 조절하는 함수
@@ -51,6 +53,7 @@ def resize(width, height):
 
 
 def main():
+    global local_frame
     """
     BVH_Viewer 의 main loop
     """
@@ -118,23 +121,39 @@ def main():
                   state['upVector'].x, state['upVector'].y, state['upVector'].z)
         draw_axes()
         if state['motion_frames'] and state['root']:
-            print(state['root'].offset)
             progress = state['frame_idx'] / state['frame_len']
-            if(0.8 <= progress):
-                if (state['isInterpolating'] == False):
-                    print("Root Transform Inverse Multiplied!")
-                    state['animations'][(state['current_animation']+1)%len(state['animations'])]['root'].kinetics \
-                       @= inverse_matrix(translation_matrix(state['root'].offset))
-                    state['animations'][(state['current_animation'] + 1) % len(state['animations'])]['root'].offset = state['root'].offset
-                    state['isInterpolating'] = True
-                print("BLENDING")
-                t = (progress - 0.8) / (0.2)
-                blended_frame = interpolate_frames(state['motion_frames'][state['frame_idx']],
-                                   state['animations'][(state['current_animation']+1)%len(state['animations'])]['motion_frames'][0],
-                                    t)
+            next_idx = (state['current_animation'] + 1) % len(state['animations'])
+            next_animation = state['animations'][next_idx]
+            next_motion_frames = next_animation['motion_frames']
+            next_root = next_animation['root']
+
+            if state['blend'] <= progress:
+                state['isInterpolating'] = True
+                t = (progress - state['blend']) / (1-state['blend'])
+
+                if state['T_offset'] is None:
+                    add_motion(state['root'], state['motion_frames'][state['frame_idx']])
+                    T_current = state['root'].children[0].kinetics.copy()
+                    add_motion(next_root, next_motion_frames[0])
+                    T_next = next_root.children[0].kinetics.copy()
+                    state['T_offset'] = T_current @ inverse_matrix(T_next)
+
+                add_motion(next_root, next_motion_frames[local_frame % len(next_motion_frames)])
+                next_root.children[0].kinetics = state['T_offset'] @ next_root.children[0].kinetics
+
+                current_frame = state['motion_frames'][state['frame_idx']]
+                next_frame = next_motion_frames[local_frame % len(next_motion_frames)]
+
+                blended_frame = interpolate_frames(current_frame, next_frame, t)
                 root_position, _ = motion_adapter(state['root'], blended_frame)
+                local_frame += 1
             else:
-                state['isInterpolating'] = False
+
+                if(state['isInterpolating'] == True):
+                    print(local_frame)
+                    state['frame_idx'] = local_frame
+                    state['isInterpolating'] = False
+                local_frame = 0
                 root_position, _ = motion_adapter(state['root'], state['motion_frames'][state['frame_idx']])
 
             draw_humanoid(root_position, state['root'])

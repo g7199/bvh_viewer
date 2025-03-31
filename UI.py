@@ -74,8 +74,8 @@ def draw_file_loader(state):
         for i, path in enumerate(state['loaded_file_paths']):
             imgui.bullet_text(f"{i}: {os.path.basename(path)}")
 
-        # Blend slider: 0.0 은 현재 애니메이션, 1.0 다음 애니메이션
-        changed_blend, blend = imgui.slider_float("Blend Factor", state.get('blend', 0.5), 0.0, 1.0)
+        # Blend slider: Blend될 위치
+        changed_blend, blend = imgui.slider_float("Blend Factor", state.get('blend', 0.8), 0.0, 1.0)
         if changed_blend:
             state['blend'] = blend
 

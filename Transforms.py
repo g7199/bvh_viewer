@@ -97,7 +97,7 @@ def motion_adapter(root, motion_frame):
     :return: root_position과 root를 return
     """
     add_motion(root, motion_frame, idx=[0])
-    root_position = list(map(float, motion_frame[:3]))
+    root_position = root.offset
 
     return root_position, root
 
@@ -154,22 +154,3 @@ def interpolate_frames(frame_a, frame_b, blend):
     blended_frame = [(1 - blend) * a_val + blend * b_val for a_val, b_val in zip(a, b)]
     return blended_frame
 
-
-def apply_normalized_motion_frame(root, motion_frame):
-    if not root.children:
-        return None
-
-    prev_kinetics = root.children[0].kinetics.copy()
-
-    root_position, _ = motion_adapter(root, motion_frame)
-
-    new_kinetics = root.children[0].kinetics
-
-    T_inv = inverse_matrix(prev_kinetics)
-    T_relative = T_inv @ new_kinetics
-
-    normalized_translation = T_relative[:3, 3].tolist()
-
-    root.offset = [normalized_translation[0], 0, normalized_translation[2]]
-
-    return root_position

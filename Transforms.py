@@ -146,10 +146,30 @@ def interpolate_frames(frame_a, frame_b, blend):
     두 motion frame 사이를 Lerp를 사용해 interpolate하는 함수입니다.
     :param frame_a: 첫번째 motion frame (list)
     :param frame_b: 두번째 motion frame (list)
-    :param blend: Blend factor
+    :param blend: Blend factor, 0이면 a, 1이면 b로 linear하게
     :return: Blend된 motion
     """
     a = list(map(float, frame_a))
     b = list(map(float, frame_b))
     blended_frame = [(1 - blend) * a_val + blend * b_val for a_val, b_val in zip(a, b)]
     return blended_frame
+
+
+def apply_normalized_motion_frame(root, motion_frame):
+    if not root.children:
+        return None
+
+    prev_kinetics = root.children[0].kinetics.copy()
+
+    root_position, _ = motion_adapter(root, motion_frame)
+
+    new_kinetics = root.children[0].kinetics
+
+    T_inv = inverse_matrix(prev_kinetics)
+    T_relative = T_inv @ new_kinetics
+
+    normalized_translation = T_relative[:3, 3].tolist()
+
+    root.offset = [normalized_translation[0], 0, normalized_translation[2]]
+
+    return root_position

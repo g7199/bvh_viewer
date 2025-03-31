@@ -57,14 +57,16 @@ def draw_file_loader(state):
             for path in file_paths:
                 root, motion_frames = bvh_parser(path)
                 animation_data = {
-                    'file_path': path,
                     'root': root,
                     'motion_frames': motion_frames,
                     'frame_len': len(motion_frames)
                 }
                 state['animations'].append(animation_data)
-            state['current_animation'] = 0  # 첫번쨰 animation에서 시작
+            state['current_animation'] = 0  # 다시 load시 첫번쨰 animation에서 시작
             state['blend'] = 0.8  # 기본 blend factor
+            state['root'], state['motion_frames'] = state['animations'][0]['root'],state['animations'][0]['motion_frames']
+            state['frame_len'] = state['animations'][0]['frame_len']
+            state['frame_idx'] = 0
 
     # 애니메이션 이름 표시
     if 'loaded_file_paths' in state and state['loaded_file_paths']:

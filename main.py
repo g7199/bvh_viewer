@@ -8,7 +8,7 @@ from imgui.integrations.pygame import PygameRenderer
 from pyglm import glm
 
 from BVH_Parser import bvh_parser, check_bvh_structure
-from Transforms import motion_adapter, extract_yaw_rotation, interpolate_frames
+from Transforms import motion_adapter, extract_yaw_rotation, interpolate_frames, inverse_matrix, translation_matrix
 from Rendering import draw_humanoid, draw_virtual_root_axis
 from utils import draw_axes, set_lights
 import Events
@@ -31,10 +31,9 @@ state = {
         'root': None,
         'motion_frames': None,
         'loaded_file_path': None,
-        'animations' : None,
-        'current_animation' : 0,
-        'local_frame_idx': 0,
-        'blend' : 0.8,
+        'current_animation': 0,
+        'animations': [],
+        'isInterpolating': False,
     }
 
 def resize(width, height):
@@ -98,7 +97,14 @@ def main():
         delta_time = current_time - previous_time
         if not state['stop']:
             if delta_time >= frame_duration and state['motion_frames']:
-                state['frame_idx'] = (state['frame_idx'] + 1) % state['frame_len']
+                state['frame_idx'] += 1
+                if(state['frame_idx'] >= state['frame_len']):
+                    state['frame_idx'] = 0
+                    state['current_animation'] = (state['current_animation'] + 1) % len(state['animations'])
+                    state['root'] = state['animations'][state['current_animation']]['root']
+                    state['motion_frames'] = state['animations'][state['current_animation']]['motion_frames']
+                    state['frame_len'] = state['animations'][state['current_animation']]['frame_len']
+                    print(state['current_animation'])
                 previous_time = current_time
 
         imgui.new_frame()
@@ -111,51 +117,26 @@ def main():
                   state['center'].x, state['center'].y, state['center'].z,
                   state['upVector'].x, state['upVector'].y, state['upVector'].z)
         draw_axes()
-
-        if state.get('animations') and len(state['animations']) > 0:
-            num_anims = len(state['animations'])
-            current_anim_index = state.get('current_animation', 0)
-            current_anim = state['animations'][current_anim_index]
-            clip_len = current_anim['frame_len']
-
-            # Get the local progress within the current animation clip.
-            local_idx = state.get('local_frame_idx', 0)
-            progress = local_idx / clip_len  # progress in [0,1)
-
-            # Determine the next animation index cyclically.
-            next_anim_index = (current_anim_index + 1) % num_anims
-            anim_A = current_anim
-            anim_B = state['animations'][next_anim_index]
-
-            if progress < state['blend']:
-                # Before the blend threshold, use the current frame from animation A.
-                blended_frame = anim_A['motion_frames'][local_idx]
+        if state['motion_frames'] and state['root']:
+            print(state['root'].offset)
+            progress = state['frame_idx'] / state['frame_len']
+            if(0.8 <= progress):
+                if (state['isInterpolating'] == False):
+                    print("Root Transform Inverse Multiplied!")
+                    state['animations'][(state['current_animation']+1)%len(state['animations'])]['root'].kinetics \
+                       @= inverse_matrix(translation_matrix(state['root'].offset))
+                    state['animations'][(state['current_animation'] + 1) % len(state['animations'])]['root'].offset = state['root'].offset
+                    state['isInterpolating'] = True
+                print("BLENDING")
+                t = (progress - 0.8) / (0.2)
+                blended_frame = interpolate_frames(state['motion_frames'][state['frame_idx']],
+                                   state['animations'][(state['current_animation']+1)%len(state['animations'])]['motion_frames'][0],
+                                    t)
+                root_position, _ = motion_adapter(state['root'], blended_frame)
             else:
-                # Compute t (0 to 1) over the blend window.
-                t = (progress - state['blend']) / (1 - state['blend'])
-                # For simplicity, assume the next animation has the same clip length.
-                # Use the same local frame index from animation B.
-                frame_A = anim_A['motion_frames'][local_idx]
-                frame_B = anim_B['motion_frames'][local_idx]
-                blended_frame = interpolate_frames(frame_A, frame_B, t)
+                state['isInterpolating'] = False
+                root_position, _ = motion_adapter(state['root'], state['motion_frames'][state['frame_idx']])
 
-            # If we have reached the end of the current clip, reset local frame counter and switch animations.
-            if local_idx >= clip_len - 1:
-                state['local_frame_idx'] = 0
-                state['current_animation'] = next_anim_index
-
-            # Apply the blended frame to update the skeleton.
-            root_position, _ = motion_adapter(state['root'], blended_frame)
-            draw_humanoid(root_position, state['root'])
-            hip_node = state['root'].children[0]
-            hip_rotation = extract_yaw_rotation(hip_node.kinetics)
-            state['root'].offset = [root_position[0], 0, root_position[2]]
-            draw_virtual_root_axis(state['root'], hip_rotation, axis_length=30.0)
-
-        elif state['motion_frames'] and state['root']:
-            # Fallback: single animation playback.
-            idx = state['frame_idx'] % len(state['motion_frames'])
-            root_position, _ = motion_adapter(state['root'], state['motion_frames'][idx])
             draw_humanoid(root_position, state['root'])
             hip_node = state['root'].children[0]
             hip_rotation = extract_yaw_rotation(hip_node.kinetics)
@@ -183,6 +164,11 @@ if __name__ == "__main__":
 
     state['root'] = root
     state['motion_frames'] = motion_frames
-
+    animation_data = {
+        'root': root,
+        'motion_frames': motion_frames,
+        'frame_len': len(motion_frames)
+    }
+    state['animations'].append(animation_data)
 
     main()

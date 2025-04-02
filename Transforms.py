@@ -1,5 +1,7 @@
 # transforms.py
 import numpy as np
+from scipy.spatial.transform import Rotation as R
+from scipy.spatial.transform import Slerp
 
 def get_rotation_matrix(channel, angle_deg):
     """
@@ -49,8 +51,8 @@ def translation_matrix(offset):
 
 def compute_forward_kinetics(node, rotations):
     """
-    각 joint별로 Forward Kinemetic을 구현하기 위한 행렬입니다.
-    Joint에 저장되어있는 local translation 과 rotation을 적용합니다.
+    각 joint별로 rotation을 받아와 local하게 kinemetic을 구현하기 위한 행렬입니다.
+    Joint의 offset에 저장되어 있는 x,y,z를 translation 행렬로 적용합니다.
     :param node: 적용할 Node (Joint)
     :param rotations: rotation 값
     :return: Forward Kinetic을 적용한 4x4 행렬
@@ -97,13 +99,13 @@ def motion_adapter(root, motion_frame):
     :return: root_position과 root를 return
     """
     add_motion(root, motion_frame, idx=[0])
-    root_position = root.offset
+    root_position = list(map(float, motion_frame[:3]))
 
     return root_position, root
 
 def add_motion(node, motion_frame, idx=[0]):
     """
-    모션을 root에 재귀적으로 더해주는 함수입니다.
+    모션을 root로부터 각 joint의 kinetics에 local하게 재귀적으로 더해주는 함수입니다.
     :param node: 적용할 node, 재귀적으로 작동한다.
     :param motion_frame: 모션프레임
     :param idx: 인덱스
@@ -154,3 +156,43 @@ def interpolate_frames(frame_a, frame_b, blend):
     blended_frame = [(1 - blend) * a_val + blend * b_val for a_val, b_val in zip(a, b)]
     return blended_frame
 
+
+def interpolate_frames_with_quat(frame_a, frame_b, t, root_joint):
+    """
+    Interpolates two motion frames using SLERP for rotation and LERP for position.
+    """
+    a = list(map(float, frame_a))
+    b = list(map(float, frame_b))
+    blended = []
+    idx = 0
+
+    def slerp_angles(euler_a, euler_b):
+        key_times = [0, 1]
+        key_rots = R.from_euler('xyz', [euler_a, euler_b], degrees=True)
+        slerp = Slerp(key_times, key_rots)
+        rot_interp = slerp([t])[0]
+        return rot_interp.as_euler('xyz', degrees=True)
+
+    def blend_joint(joint):
+        nonlocal idx
+        joint_channels = joint.channels
+        joint_values = []
+
+        if 'position' in ''.join(joint_channels).lower():
+            for i in range(3):
+                joint_values.append((1 - t) * a[idx] + t * b[idx])
+                idx += 1
+
+        if 'rotation' in ''.join(joint_channels).lower():
+            rot_a = [a[idx + i] for i in range(3)]
+            rot_b = [b[idx + i] for i in range(3)]
+            rot_interp = slerp_angles(rot_a, rot_b)
+            joint_values.extend(rot_interp)
+            idx += 3
+
+        blended.extend(joint_values)
+        for child in joint.children:
+            blend_joint(child)
+
+    blend_joint(root_joint.children[0])
+    return blended

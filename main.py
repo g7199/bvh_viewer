@@ -8,7 +8,7 @@ from imgui.integrations.pygame import PygameRenderer
 from pyglm import glm
 
 from BVH_Parser import bvh_parser, check_bvh_structure
-from Transforms import motion_adapter, extract_yaw_rotation, interpolate_frames, add_motion, inverse_matrix
+from Transforms import motion_adapter, extract_yaw_rotation, interpolate_frames, add_motion, inverse_matrix, interpolate_frames_with_quat
 from Rendering import draw_humanoid, draw_virtual_root_axis
 from utils import draw_axes, set_lights
 import Events
@@ -35,7 +35,7 @@ state = {
         'animations': [],
         'isInterpolating': False,
         'blend': 0.8,
-        'T_offset': None,
+        'T_offset': [0,0,0],
     }
 local_frame = 0
 def resize(width, height):
@@ -107,7 +107,7 @@ def main():
                     state['root'] = state['animations'][state['current_animation']]['root']
                     state['motion_frames'] = state['animations'][state['current_animation']]['motion_frames']
                     state['frame_len'] = state['animations'][state['current_animation']]['frame_len']
-                    print(state['current_animation'])
+
                 previous_time = current_time
 
         imgui.new_frame()
@@ -131,35 +131,24 @@ def main():
                 state['isInterpolating'] = True
                 t = (progress - state['blend']) / (1-state['blend'])
 
-                if state['T_offset'] is None:
-                    add_motion(state['root'], state['motion_frames'][state['frame_idx']])
-                    T_current = state['root'].children[0].kinetics.copy()
-                    add_motion(next_root, next_motion_frames[0])
-                    T_next = next_root.children[0].kinetics.copy()
-                    state['T_offset'] = T_current @ inverse_matrix(T_next)
-
-                add_motion(next_root, next_motion_frames[local_frame % len(next_motion_frames)])
-                next_root.children[0].kinetics = state['T_offset'] @ next_root.children[0].kinetics
-
                 current_frame = state['motion_frames'][state['frame_idx']]
                 next_frame = next_motion_frames[local_frame % len(next_motion_frames)]
-
-                blended_frame = interpolate_frames(current_frame, next_frame, t)
+                next_frame[:3] = current_frame[:3]
+                blended_frame = interpolate_frames_with_quat(current_frame, next_frame, t, state['root'])
                 root_position, _ = motion_adapter(state['root'], blended_frame)
-                local_frame += 1
+                #root_position, _ = motion_adapter(state['root'], state['motion_frames'][state['frame_idx']])
+                local_frame += 1 
             else:
-
                 if(state['isInterpolating'] == True):
-                    print(local_frame)
                     state['frame_idx'] = local_frame
                     state['isInterpolating'] = False
                 local_frame = 0
                 root_position, _ = motion_adapter(state['root'], state['motion_frames'][state['frame_idx']])
 
+
             draw_humanoid(root_position, state['root'])
             hip_node = state['root'].children[0]
             hip_rotation = extract_yaw_rotation(hip_node.kinetics)
-            state['root'].offset = [root_position[0], 0, root_position[2]]
             draw_virtual_root_axis(state['root'], hip_rotation, axis_length=30.0)
 
         imgui.render()

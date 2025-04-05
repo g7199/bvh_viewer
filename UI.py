@@ -36,16 +36,21 @@ def draw_file_loader(state):
         if file_paths:
             state['animations'] = []
             file_paths = list(file_paths)  # 여러개의 애니메이션 파일을 다루기 때문에 list로 변환
+            i = 0
             for path in file_paths:
                 root, motion_frames = BVHParser(path)
                 animation_data = {
                     'path': os.path.basename(path),
                     'root': root,
-                    'motion_frames': motion_frames,
-                    'frame_len': motion_frames.frameCount
+                    'motion': motion_frames,
+                    'frame_len': motion_frames.frameCount,
+                    'index': i
                 }
+                i+=1
                 state['animations'].append(animation_data)
-
+        state['frame_idx'] = 0
+        state['animationIndex'] = 0
+        state['frame_len'] = state['animations'][0]['frame_len']
     # 애니메이션 이름 표시
     imgui.text("Loaded Animations:")
     for i, data in enumerate(state['animations']):

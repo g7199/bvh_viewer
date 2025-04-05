@@ -1,7 +1,7 @@
 import imgui
 import os
 from tkinter import filedialog
-from BVH_Parser import bvh_parser
+from BVH_Parser import BVHParser
 
 def draw_control_panel(state):
     """
@@ -15,25 +15,8 @@ def draw_control_panel(state):
         state['stop'] = not state['stop']
     if changed:
         state['frame_idx'] = value-1
-    imgui.separator()
-    imgui.text("Joint Tree:")
-    if state['root']:
-        draw_joint_tree(state['root'])
     imgui.end()
 
-def draw_joint_tree(joint):
-    """
-    Skeleton의 Hierarchy를 표시하는 창입니다.
-
-    :param joint: 계층별로 존재하는 Joint를 그리기 위함입니다.
-    """
-    node_open = imgui.tree_node(joint.name)
-    if imgui.is_item_clicked():
-        print("Joint selected:", joint.name)
-    if node_open:
-        for child in joint.children:
-            draw_joint_tree(child)
-        imgui.tree_pop()
 
 def draw_file_loader(state):
     """
@@ -51,32 +34,21 @@ def draw_file_loader(state):
             filetypes=[("BVH Files", "*.bvh")]
         )
         if file_paths:
-            file_paths = list(file_paths)  # 여러개의 애니메이션 파일을 다루기 때문에 list로 변환
-            state['loaded_file_paths'] = file_paths
             state['animations'] = []
+            file_paths = list(file_paths)  # 여러개의 애니메이션 파일을 다루기 때문에 list로 변환
             for path in file_paths:
-                root, motion_frames = bvh_parser(path)
+                root, motion_frames = BVHParser(path)
                 animation_data = {
+                    'path': os.path.basename(path),
                     'root': root,
                     'motion_frames': motion_frames,
-                    'frame_len': len(motion_frames)
+                    'frame_len': motion_frames.frameCount
                 }
                 state['animations'].append(animation_data)
-            state['current_animation'] = 0  # 다시 load시 첫번쨰 animation에서 시작
-            state['blend'] = 0.8  # 기본 blend factor
-            state['root'], state['motion_frames'] = state['animations'][0]['root'],state['animations'][0]['motion_frames']
-            state['frame_len'] = state['animations'][0]['frame_len']
-            state['frame_idx'] = 0
 
     # 애니메이션 이름 표시
-    if 'loaded_file_paths' in state and state['loaded_file_paths']:
-        imgui.text("Loaded Animations:")
-        for i, path in enumerate(state['loaded_file_paths']):
-            imgui.bullet_text(f"{i}: {os.path.basename(path)}")
-
-        # Blend slider: Blend될 위치
-        changed_blend, blend = imgui.slider_float("Blend Factor", state.get('blend', 0.8), 0.0, 1.0)
-        if changed_blend:
-            state['blend'] = blend
+    imgui.text("Loaded Animations:")
+    for i, data in enumerate(state['animations']):
+        imgui.bullet_text(f"{i}: {data['path']}")
 
     imgui.end()

@@ -1,113 +1,216 @@
-import numpy as np
+from pyglm import glm
+from Transforms import get_pelvis_virtual_safe
 
 class Joint:
     """
     관절을 정의하는 Joint Class
     """
-    def __init__(self, name):
+    def __init__(self, name: str, offset: tuple, channels: list):
         self.name = name
-        self.channels = []
+        self.channels = channels
         self.children = []
-        self.offset = [0, 0, 0]
-        self.kinetics = np.identity(4, dtype=float)
+        self.offset = offset
         self.parent = None
+        self.transform = glm.mat4(1.0)
+    def addChild(self, child):
+        child.parent = self
+        self.children.append(child)
 
-def bvh_parser(file_path):
+
+class FrameData:
+    def __init__(self):
+        self.rotation = {}
+        self.position = {}
+
+class Motion:
+    def __init__(self, frame_Count: int, frame_time: float):
+        self.frameData = []
+        self.frameCount = frame_Count
+        self.frameTime = frame_time
+
+    def getFrame(self, index: int):
+        """
+        입력한 index의 motion data를 반환한다.
+        :param index: frame index
+        :return: 모션 데이터
+        """
+        if index < 0 or index >= self.frameCount:
+            raise IndexError("Frame index out of range.")
+        return self.frameData[index]
+    def applyVirtualRoot(self):
+        for frame in self.frameData:
+            ap = frame.position['hip']
+            ar = frame.rotation['hip']
+
+            ap_local, ar_local = get_pelvis_virtual_safe(ap, ar)
+
+            ap_global = ap - ap_local
+            ar_global = ar * glm.conjugate(ar_local)
+
+
+            frame.position['hip'] = [ap_local.x, ap_local.y, ap_local.z]
+            frame.rotation['hip'] = ar_local
+
+            frame.position["VirtualRoot"] = ap_global
+            frame.rotation["VirtualRoot"] = ar_global
+
+
+def parseJoint(tokens, index):
     """
-    BVH_Data를 받아서 parsing하는 함수입니다.
-    이때 마지막 단계에서 virtual_root 노드를 추가로 더해 root Transform T로 사용합니다.
-    :param file_path: 파일 경로
+    Recursive function to parse a joint definition from the tokenized BVH data.
+    **Fixed:** Added recursive descent parsing for both 'ROOT', 'JOINT' and 'End Site'.
     """
-    stack = []
-    root = None
-    cur_node = None
-    motion = []
-    is_motion = False
+    token = tokens[index]
+    # Determine the joint type and name
+    if token in ["ROOT", "JOINT"]:
+        index += 1
+        name = tokens[index]
+        index += 1
+    elif token == "End":
+        index += 2  # Skip "End" and "Site"
+        name = "End Site"
+    # Skip the opening brace '{'
+    index += 1
 
-    try:
-        with open(file_path, "r", encoding="utf-8") as file:
-            for line in file:
-                parts = line.split()
-                if not parts:
-                    continue
+    offset = None
+    channels = []
+    children = []
 
-                if is_motion:
-                    if parts[0] in ["Frames:", "Frame"]:
-                        continue
-                    motion_frame = parts[:]  # List of strings (convert later as needed)
-                    motion.append(motion_frame)
-                    continue
+    # Process the block until we hit the closing brace '}'
+    while tokens[index] != "}":
+        token = tokens[index]
+        if token == "OFFSET":
+            index += 1
+            x = float(tokens[index]); index += 1
+            y = float(tokens[index]); index += 1
+            z = float(tokens[index]); index += 1
+            offset = (x, y, z)
+        elif token == "CHANNELS":
+            index += 1
+            num_channels = int(tokens[index])
+            index += 1
+            channels = tokens[index:index+num_channels]
+            index += num_channels
+        elif token in ["JOINT", "End"]:
+            child, index = parseJoint(tokens, index)
+            children.append(child)
+        else:
+            # Skip any tokens that do not match known keywords
+            index += 1
+    index += 1  # Skip the closing brace '}'
 
-                if parts[0] == "MOTION":
-                    is_motion = True
+    if offset is None:
+        offset = (0.0, 0.0, 0.0)
+    joint = Joint(name, offset, channels)
+    for child in children:
+        joint.addChild(child)
+    return joint, index
 
-                if parts[0] in ["ROOT", "JOINT", "End"]:
-                    node = Joint(parts[1])
-                    node.parent = cur_node
-                    if not root:
-                        root = node
-                    if cur_node:
-                        cur_node.children.append(node)
 
-                    stack.append(node)
-                    cur_node = node
-
-                elif parts[0] == "OFFSET":
-                    cur_node.offset = list(map(float, parts[1:]))
-
-                elif parts[0] == "CHANNELS":
-                    cur_node.channels = parts[2:]
-
-                elif parts[0] == "}":
-                    stack.pop()
-                    if stack:
-                        cur_node = stack[-1]
-        if root is not None:
-            # Virtual root 생성
-            virtual_root = Joint("virtual_root")
-            virtual_root.channels = []  # Motion Channel은 null
-            virtual_root.offset = [0, 0, 0]
-            virtual_root.children.append(root)
-            root.parent = virtual_root
-            root = virtual_root
-        return root, motion
-
-    except FileNotFoundError:
-        print(f"Error: File '{file_path}' does not exist.")
-
-def check_bvh_structure(joint, is_root=False):
+def BVHParser(file_path: str):
     """
-    BVH_Data의 구조가 valid한지 재귀적으로 확인하는 함수입니다.
-    :param joint: 확인할 joint
+    Parses the given BVH file and returns the root joint and motion data.
     """
-    if joint.name == "virtual_root":
-        if not joint.children:
-            raise ValueError("Virtual root has no children.")
-        for child in joint.children:
-            check_bvh_structure(child, is_root=True)
-        return
-    if is_root:
-        if len(joint.channels) != 6:
-            raise ValueError(f"Root joint '{joint.name}' must have 6 channels, found {len(joint.channels)}")
-        for channel in joint.channels[:3]:
-            if "position" not in channel.lower():
-                raise ValueError(
-                    f"Root joint '{joint.name}' first three channels must be position channels, found '{channel}'")
-        for channel in joint.channels[3:]:
-            if "rotation" not in channel.lower():
-                raise ValueError(
-                    f"Root joint '{joint.name}' last three channels must be rotation channels, found '{channel}'")
+    with open(file_path, 'r') as f:
+        content = f.read()
+    # Tokenize the file content by splitting on whitespace
+    tokens = content.replace('\n', ' ').split()
+    index = 0
+
+    # Skip the "HIERARCHY" token if present
+    if tokens[index] == "HIERARCHY":
+        index += 1
+
+    # Parse the root joint recursively
+    root_joint, index = parseJoint(tokens, index)
+
+    # Advance to the "MOTION" section
+    while tokens[index] != "MOTION":
+        index += 1
+    index += 1  # Skip the "MOTION" token
+
+    # Parse frame count
+    if tokens[index] == "Frames:":
+        index += 1
+        frame_count = int(tokens[index])
+        index += 1
     else:
-        if joint.channels:
-            if len(joint.channels) != 3:
-                for channel in joint.channels[3:]:
-                    if "rotation" not in channel.lower():
-                        raise ValueError(f"Joint '{joint.name}' channel must be a rotation channel, found '{channel}'")
-            else:
-                for channel in joint.channels:
-                    if "rotation" not in channel.lower():
-                        raise ValueError(f"Joint '{joint.name}' channel must be a rotation channel, found '{channel}'")
+        frame_count = 0
 
-    for child in joint.children:
-        check_bvh_structure(child, is_root=False)
+    # Parse frame time
+    if tokens[index] == "Frame" and tokens[index+1] == "Time:":
+        index += 2
+        frame_time = float(tokens[index])
+        index += 1
+    else:
+        frame_time = 0.0
+
+    motion = Motion(frame_count, frame_time)
+
+    # Collect joints with channels in depth-first order
+    channel_order = []
+    def collectChannels(joint):
+        if joint.channels:
+            channel_order.append(joint)
+        for child in joint.children:
+            collectChannels(child)
+    collectChannels(root_joint)
+
+    last_quat = {}
+
+    for _ in range(frame_count):
+        frame_data = FrameData()
+        for joint in channel_order:
+            values = []
+            for _ in joint.channels:
+                values.append(float(tokens[index]))
+                index += 1
+
+            if any("position" in ch.lower() for ch in joint.channels):
+                pos = [values[i] for i, ch in enumerate(joint.channels) if "position" in ch.lower()]
+                if joint.name.lower() in ["hip"]:
+                    frame_data.position["hip"] = pos
+
+
+            rotation = glm.vec3(0.0)
+            for i, ch in enumerate(joint.channels):
+                if "rotation" in ch.lower():
+                    if ch.lower().startswith("x"):
+                        rotation.x = glm.radians(values[i])
+                    elif ch.lower().startswith("y"):
+                        rotation.y = glm.radians(values[i])
+                    elif ch.lower().startswith("z"):
+                        rotation.z = glm.radians(values[i])
+
+            qx = glm.angleAxis(rotation.x, glm.vec3(1, 0, 0))
+            qy = glm.angleAxis(rotation.y, glm.vec3(0, 1, 0))
+            qz = glm.angleAxis(rotation.z, glm.vec3(0, 0, 1))
+
+            if joint.name.lower() in ["hip"]:
+                rot_quat = qz * qy * qx
+            else:
+                rot_quat = qz * qx * qy
+
+            frame_data.rotation[joint.name] = rot_quat
+
+
+        motion.frameData.append(frame_data)
+
+    virtualRoot = Joint("VirtualRoot", [0, 0, 0], ['Xposition', 'Yposition', 'Zposition', 'Zrotation', 'Yrotation', 'Xrotation'])
+    motion.applyVirtualRoot()
+    virtualRoot.addChild(root_joint)
+    root_joint.parent = virtualRoot
+
+    return virtualRoot, motion
+
+
+# Example usage:
+if __name__ == "__main__":
+    # Provide the correct path to your BVH file
+    bvh_file_path = r'C:\Users\admin\Downloads\cmuconvert-daz-113-128\114\114_05.bvh'
+    root, motion = BVHParser(bvh_file_path)
+    print("Parsed BVH file successfully!")
+    print("Root Joint:", root.name)
+    print(motion.frameData[0].position)
+    print("Number of frames:", motion.frameCount)
 

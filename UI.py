@@ -48,6 +48,7 @@ def draw_file_loader(state):
         state['frame_idx'] = 0
         state['animationIndex'] = 0
         state['frame_len'] = state['animations'][0]['frame_len']
+
     # 애니메이션 이름 표시
     imgui.text("Loaded Animations:")
     for i, data in enumerate(state['animations']):

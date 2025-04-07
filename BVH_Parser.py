@@ -37,7 +37,7 @@ class Motion:
         if index < 0 or index >= self.frameCount:
             raise IndexError("Frame index out of range.")
         return self.frameData[index]
-    def applyVirtualRoot(self):
+    def applyVirtual(self):
         for frame in self.frameData:
             ap = frame.position['hip']
             ar = frame.rotation['hip']
@@ -198,9 +198,10 @@ def BVHParser(file_path: str):
         motion.frameData.append(frame_data)
 
     virtualRoot = Joint("VirtualRoot", [0, 0, 0], ['Xposition', 'Yposition', 'Zposition', 'Zrotation', 'Yrotation', 'Xrotation'])
-    motion.applyVirtualRoot()
+    motion.applyVirtual()
     virtualRoot.addChild(root_joint)
     root_joint.parent = virtualRoot
+
     return virtualRoot, motion
 
 

@@ -92,18 +92,20 @@ def lookrotation(v: glm.vec3, u: glm.vec3) -> glm.quat:
 
 def apply_virtual_root_offset(current_motion, next_motion):
     position_offset, rotation_offset = compute_offset(current_motion, next_motion)
-
+    i = 0
 
     # Apply the offset to every frame of the next animation
     for frame in next_motion.frameData:
-        vr_vec = glm.vec3(frame.position["VirtualRoot"])
+        apply_offset = (i >= 1)
+        if(apply_offset):
+            vr_vec = glm.vec3(frame.position["VirtualRoot"])
 
-        vr_vec = 0 * vr_vec + position_offset
-        frame.position["VirtualRoot"] = [vr_vec.x, vr_vec.y, vr_vec.z]
+            vr_vec = rotation_offset * vr_vec + position_offset
+            frame.position["VirtualRoot"] = [vr_vec.x, vr_vec.y, vr_vec.z]
 
-        # Update rotations by applying the rotation offset
-        frame.rotation["VirtualRoot"] = rotation_offset
-
+            # Update rotations by applying the rotation offset
+            frame.rotation["VirtualRoot"] = rotation_offset * frame.rotation["VirtualRoot"]
+        i+=1
 
 def compute_offset(current_motion, next_motion):
     # Get the final frame of the current animation
@@ -112,12 +114,10 @@ def compute_offset(current_motion, next_motion):
     prev_vr_rot = last_frame.rotation["VirtualRoot"]
 
     # Get the first frame of the next animation
-    first_next = next_motion.frameData[0]
+    first_next = next_motion.frameData[1]
     next_vr_pos = glm.vec3(first_next.position["VirtualRoot"])
     next_vr_rot = first_next.rotation["VirtualRoot"]
 
-    print("Prev",prev_vr_rot)
-    print("Next", next_vr_rot)
     # Compute full offset transformation
     rotation_offset = prev_vr_rot * glm.conjugate(next_vr_rot)
     position_offset = prev_vr_pos - rotation_offset * next_vr_pos

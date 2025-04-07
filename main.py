@@ -9,7 +9,7 @@ from pyglm import glm
 from BVH_Parser import BVHParser
 from Rendering import draw_humanoid, draw_virtual_root_axis
 from utils import draw_axes, set_lights
-from Transforms import apply_virtual_root_offset, blend_new_animation_offset, compute_offset
+from Transforms import apply_virtual_root_offset
 import Events
 import UI
 import os

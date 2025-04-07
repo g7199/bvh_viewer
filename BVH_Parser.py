@@ -55,6 +55,7 @@ class Motion:
             frame.rotation["VirtualRoot"] = ar_global
 
 
+
 def parseJoint(tokens, index):
     """
     Recursive function to parse a joint definition from the tokenized BVH data.
@@ -200,19 +201,18 @@ def BVHParser(file_path: str):
     motion.applyVirtualRoot()
     virtualRoot.addChild(root_joint)
     root_joint.parent = virtualRoot
-
     return virtualRoot, motion
 
 
 # Example usage:
 if __name__ == "__main__":
     # Provide the correct path to your BVH file
-    bvh_file_path = r"C:\Users\joo99\Downloads\cmuconvert-daz-01-09\06\06_08.bvh"
+    bvh_file_path = r"C:\Users\admin\Downloads\cmuconvert-daz-01-09\06\06_07.bvh"
     root, motion = BVHParser(bvh_file_path)
     print("Parsed BVH file successfully!")
     print("Root Joint:", root.name)
     for motionFrame in motion.frameData:
-        print(motionFrame.rotation)
+        print(motionFrame.rotation["VirtualRoot"])
 
     print("Number of frames:", motion.frameCount)
 

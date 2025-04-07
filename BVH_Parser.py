@@ -207,10 +207,12 @@ def BVHParser(file_path: str):
 # Example usage:
 if __name__ == "__main__":
     # Provide the correct path to your BVH file
-    bvh_file_path = r'C:\Users\admin\Downloads\cmuconvert-daz-113-128\114\114_05.bvh'
+    bvh_file_path = r"C:\Users\joo99\Downloads\cmuconvert-daz-01-09\06\06_08.bvh"
     root, motion = BVHParser(bvh_file_path)
     print("Parsed BVH file successfully!")
     print("Root Joint:", root.name)
-    print(motion.frameData[0].position)
+    for motionFrame in motion.frameData:
+        print(motionFrame.rotation)
+
     print("Number of frames:", motion.frameCount)
 

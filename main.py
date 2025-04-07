@@ -9,6 +9,7 @@ from pyglm import glm
 from BVH_Parser import BVHParser
 from Rendering import draw_humanoid, draw_virtual_root_axis
 from utils import draw_axes, set_lights
+from Transforms import apply_virtual_root_offset, blend_new_animation_offset, compute_offset
 import Events
 import UI
 import os
@@ -27,6 +28,7 @@ state = {
         'frame_idx': 0,
         'frame_len': 0,
         'animations': [],
+        'animationIndex': 0,
     }
 
 def resize(width, height):
@@ -43,42 +45,12 @@ def resize(width, height):
     glMatrixMode(GL_MODELVIEW)
     glLoadIdentity()
 
-def apply_virtual_root_offset(current_motion, next_motion):
-    # Get the final frame of the current animation
-    last_frame = current_motion.frameData[-1]
-    prev_vr_pos = glm.vec3(*last_frame.position["VirtualRoot"])
-    prev_vr_rot = last_frame.rotation["VirtualRoot"]
 
-    # Get the first frame of the next animation
-    first_frame = next_motion.frameData[0]
-    next_vr_pos = glm.vec3(*first_frame.position["VirtualRoot"])
-    next_vr_rot = first_frame.rotation["VirtualRoot"]
-
-    # Compute the offset transform
-    position_offset = prev_vr_pos - next_vr_pos
-    rotation_offset = prev_vr_rot * glm.inverse(next_vr_rot)
-
-    # Apply the offset to every frame of the next animation
-    for frame in next_motion.frameData:
-        # Update hip position by applying the position offset
-        hip_vec = glm.vec3(*frame.position["hip"])
-        hip_vec += position_offset
-        frame.position["hip"] = [hip_vec.x, hip_vec.y, hip_vec.z]
-
-        # Update virtual root position similarly
-        vr_vec = glm.vec3(*frame.position["VirtualRoot"])
-        vr_vec += position_offset
-        frame.position["VirtualRoot"] = [vr_vec.x, vr_vec.y, vr_vec.z]
-
-        # Update rotations by applying the rotation offset
-        frame.rotation["hip"] = rotation_offset * frame.rotation["hip"]
-        frame.rotation["VirtualRoot"] = rotation_offset * frame.rotation["VirtualRoot"]
 
 def main():
     """
     BVH_Viewer 의 main loop
     """
-    currentAnimIndex = 0
     pygame.init()
     size = (800, 600)
     screen = pygame.display.set_mode(size, pygame.DOUBLEBUF | pygame.OPENGL | pygame.RESIZABLE)
@@ -124,8 +96,18 @@ def main():
             if delta_time >= frame_duration:
                 state['frame_idx'] += 1
                 if(state['frame_idx'] >= state['frame_len']):
-                    currentAnimIndex = (currentAnimIndex+1)%len(state['animations'])
-                    state['frame_len'] = state['animations'][currentAnimIndex]['frame_len']
+                    current_anim = state['animations'][state['animationIndex']]
+                    current_motion = current_anim['motion']
+
+                    nextAnimIndex = (state['animationIndex'] + 1) % len(state['animations'])
+
+                    next_anim = state['animations'][nextAnimIndex]
+                    next_motion = next_anim['motion']
+
+                    apply_virtual_root_offset(current_motion, next_motion)
+
+                    state['animationIndex'] = nextAnimIndex
+                    state['frame_len'] = state['animations'][state['animationIndex']]['frame_len']
                     state['frame_idx'] = 0
                 previous_time = current_time
 
@@ -141,8 +123,10 @@ def main():
         draw_axes()
 
 
-        draw_humanoid(state['animations'][currentAnimIndex]['root'],state['animations'][currentAnimIndex]['motion'],state['frame_idx'])
-        draw_virtual_root_axis(state['animations'][currentAnimIndex]['root'],20)
+        draw_humanoid(state['animations'][state['animationIndex']]['root'],
+                      state['animations'][state['animationIndex']]['motion'],
+                      state['frame_idx'])
+        draw_virtual_root_axis(state['animations'][state['animationIndex']]['root'],20)
 
         imgui.render()
         impl.render(imgui.get_draw_data())
@@ -167,7 +151,6 @@ if __name__ == "__main__":
         'root': root,
         'motion': motion,
         'frame_len': motion.frameCount,
-        'index': 0
     }
     state['animations'].append(animation_data)
     main()

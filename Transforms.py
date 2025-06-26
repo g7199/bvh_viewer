@@ -1,5 +1,6 @@
 # transforms.py
 import numpy as np
+from pyglm import glm
 
 def get_rotation_matrix(channel, angle_deg):
     """
@@ -8,30 +9,17 @@ def get_rotation_matrix(channel, angle_deg):
     :param angle_deg: 각도 input
     :return: 회전 행렬
     """
-    theta = np.deg2rad(angle_deg)
+    theta = glm.radians(angle_deg)
     if "Xrotation" in channel:
-        return np.array([
-            [1, 0, 0, 0],
-            [0, np.cos(theta), -np.sin(theta), 0],
-            [0, np.sin(theta),  np.cos(theta), 0],
-            [0, 0, 0, 1]
-        ])
+        q = glm.angleAxis(theta, glm.vec3(1,0,0))
     elif "Yrotation" in channel:
-        return np.array([
-            [ np.cos(theta), 0, np.sin(theta), 0],
-            [ 0, 1, 0, 0],
-            [-np.sin(theta), 0, np.cos(theta), 0],
-            [0, 0, 0, 1]
-        ])
+        q = glm.angleAxis(theta, glm.vec3(0, 1, 0))
     elif "Zrotation" in channel:
-        return np.array([
-            [np.cos(theta), -np.sin(theta), 0, 0],
-            [np.sin(theta),  np.cos(theta), 0, 0],
-            [0, 0, 1, 0],
-            [0, 0, 0, 1]
-        ])
+        q = glm.angleAxis(theta, glm.vec3(0, 0, 1))
     else:
-        return np.identity(4)
+        return glm.mat4(1.0)
+
+    return glm.mat4_cast(q)
 
 def translation_matrix(offset):
     """
@@ -40,29 +28,9 @@ def translation_matrix(offset):
     :return: translation 행렬
     """
     tx, ty, tz = offset
-    return np.array([
-        [1, 0, 0, tx],
-        [0, 1, 0, ty],
-        [0, 0, 1, tz],
-        [0, 0, 0, 1]
-    ])
+    return glm.translate(glm.mat4(1.0), glm.vec3(tx,ty,tz))
 
-def compute_forward_kinetics(node, rotations):
-    """
-    각 joint별로 Forward Kinemetic을 구현하기 위한 행렬입니다.
-    Joint에 저장되어있는 local translation 과 rotation을 적용합니다.
-    :param node: 적용할 Node (Joint)
-    :param rotations: rotation 값
-    :return: Forward Kinetic을 적용한 4x4 행렬
-    """
-    M = translation_matrix(node.offset)
-    channels = node.channels[-3:]  # 마지막 채널 3개가 rotation값
-    if rotations is not None:
-        for channel, angle in zip(channels, rotations):
-            M = M @ get_rotation_matrix(channel, angle)
-    return M
-
-def extract_yaw_rotation(kinetics, offset):
+def extract_vroot_transform(quat_rotation, offset):
     """
     회전행렬에서 yaw값만을 추출하여, offset을 적용한 4x4 행렬을 반환합니다.
     기존 방식 대신 회전행렬의 특정 요소를 이용해 yaw를 안정적으로 계산합니다.
@@ -72,20 +40,19 @@ def extract_yaw_rotation(kinetics, offset):
     :return: yaw 회전만을 적용한 4x4 행렬
     """
     # 회전 행렬에서 yaw를 직접 추출 (현재 좌표계에 맞게 수정 필요)
-    R_mat = kinetics[:3, :3]
+    R_mat = glm.mat3_cast(quat_rotation)
     # 예: R_mat[0,2]와 R_mat[2,2]를 사용 (좌표계에 따라 부호나 순서가 달라질 수 있음)
-    yaw = np.arctan2(R_mat[0, 2], R_mat[2, 2])
+    yaw = glm.atan(R_mat[2, 0], R_mat[2, 2])
     
-    cos_y = np.cos(yaw)
-    sin_y = np.sin(yaw)
-    rotation_y = np.array([
-        [cos_y, 0, sin_y, offset[0]],
-        [0,     1, 0,     offset[1]],
-        [-sin_y,0, cos_y, offset[2]],
-        [0,     0, 0,     1]
-    ], dtype=float)
-    return rotation_y
+    q_yaw = glm.angleAxis(yaw, glm.vec3(0,1,0))
+    R_yaw = glm.mat4_cast(q_yaw)
 
+    T_offset = glm.translate(glm.mat4(1.0),glm.vec3(offset.x,0,offset.z))
+
+    virtual_root_T= T_offset @ R_yaw
+    return virtual_root_T, q_yaw
+
+'''
 def motion_adapter(root, motion_frame):
     """
     root를 목표로 motion을 적용시키기 위한 함수입니다.
@@ -94,18 +61,35 @@ def motion_adapter(root, motion_frame):
     :param motion_frame: 모션 프레임값
     :return: root_position과 root를 return
     """
-    add_motion(root, motion_frame, idx=[0])
-    root_position = list(map(float, motion_frame[:3]))
+    root_position = motion_frame.joint_positions.get("virtual_root", glm.vec3(0,0,0))
+    #add_motion(root, motion_frame)
+    #compute_forward_kinematics(root, )
+    print("=== Motion Frame joints ===")
+    print(motion_frame.joint_positions.keys())
 
     return root_position, root
 
-def add_motion(node, motion_frame, idx=[0]):
+def add_motion(joint, motion_frame):
     """
     모션을 root에 재귀적으로 더해주는 함수입니다.
     :param node: 적용할 node, 재귀적으로 작동한다.
     :param motion_frame: 모션프레임
     :param idx: 인덱스
     """
+    if joint.name in motion_frame.joint_rotations:
+        print(f"Applying motion to {joint.name}")
+        joint_rot = motion_frame.joint_rotations[joint.name] #quaternion
+        joint_pos = motion_frame.joint_positions[joint.name] #vec3
+
+        local_t = translation_matrix(joint_pos)
+        local_r = glm.mat4_cast(joint_rot)
+
+        joint.kinematics = local_t @ local_r
+
+    for child in joint.children:
+        add_motion(child, motion_frame)
+
+    
     if not node:
         return
 
@@ -114,15 +98,17 @@ def add_motion(node, motion_frame, idx=[0]):
             # 첫 3개가 position 다음 3개가 rotation
             idx[0] += 3
             rotation = list(map(float, motion_frame[idx[0]:idx[0] + 3]))
-            node.kinetics = compute_forward_kinetics(node, rotation)
+            node.kinetics = compute_forward_kinematics(node, rotation)
             idx[0] += 3
         elif len(node.channels) == 3:
             rotation = list(map(float, motion_frame[idx[0]:idx[0] + 3]))
-            node.kinetics = compute_forward_kinetics(node, rotation)
+            node.kinetics = compute_forward_kinematics(node, rotation)
             idx[0] += 3
 
     for child in node.children:
         add_motion(child, motion_frame, idx)
+        
+
 
 def inverse_matrix(T):
     """
@@ -138,6 +124,7 @@ def inverse_matrix(T):
     T_inv[:3, :3] = R_inv
     T_inv[:3, 3] = t_inv
     return T_inv
+
 
 def get_projection(v, onto):
     onto_norm = onto / np.linalg.norm(onto)
@@ -170,3 +157,4 @@ def get_pelvis_virtual(kinetics):
     kinetics[:3, 3] = ap_transformed
     
     return kinetics
+'''

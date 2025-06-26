@@ -4,6 +4,7 @@ from OpenGL.GLU import *
 
 import numpy as np
 from pyglm import glm
+import random
 
 colors = [
     [1.0, 0.0, 0.0],
@@ -30,8 +31,22 @@ normals = [
     [0.0, -1.0, 0.0]
 ]
 
+def random_color(min_val=0.3, max_val=1.0):
+    """
+    검은 계열을 피해서 랜덤한 RGB 컬러를 생성합니다.
+    :param min_val: 최소 채널값 (0.3 이상 추천)
+    :param max_val: 최대 채널값 (1.0 이하)
+    :return: (R, G, B) float 튜플
+    """
+    r = random.uniform(min_val, max_val)
+    g = random.uniform(min_val, max_val)
+    b = random.uniform(min_val, max_val)
+    return (r, g, b)
 
-def draw_colored_cube(size_x, size_y=-1, size_z=-1):
+def blend_color(colora, colorb):
+    return tuple((a + b) / 2.0 for a, b in zip(colora, colorb))
+
+def draw_colored_cube(size_x, size_y=-1, size_z=-1, color = None):
     """
     면을 구분하기 위한 3개의 색상을 texture로 가진 cube를 생성하는 함수입니다.
     :param size_x: cube의 x길이
@@ -44,7 +59,10 @@ def draw_colored_cube(size_x, size_y=-1, size_z=-1):
     glScaled(size_x, size_y, size_z)
     glBegin(GL_QUADS)
     for i in range(6):
-        glColor3fv(colors[i])
+        if color:
+            glColor3fv(color)
+        else:
+            glColor3fv(colors[i])
         glNormal3fv(normals[i])
         for j in range(4):
             glVertex3fv(vertices[i * 4 + j])
@@ -186,7 +204,7 @@ def draw_undercircle(radius=1.0):
     gluDisk(quadric, 0.0, radius, 32, 1)
     gluDeleteQuadric(quadric)
 
-def draw_arrow(circle_radius, arrow_length):
+def draw_arrow(circle_radius, arrow_length, color):
 
     R = np.eye(3)
     forward = R @ np.array([0,0,-1])
@@ -196,7 +214,7 @@ def draw_arrow(circle_radius, arrow_length):
     tail = -dir * circle_radius
     head = tail - dir * arrow_length
     
-    glColor3f(1.0, 0.0, 0.0)
+    glColor3fv(color)
     
     glBegin(GL_LINES)
     glVertex3f(tail[0], 0, tail[2])

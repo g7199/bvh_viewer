@@ -1,3 +1,4 @@
+#main.py
 import argparse
 import math
 import pygame
@@ -6,12 +7,11 @@ from OpenGL.GLU import *
 import imgui
 from imgui.integrations.pygame import PygameRenderer
 from pyglm import glm
-import numpy as np
+#import numpy as np
 
-from BVH_Parser import bvh_parser, check_bvh_structure
-from Transforms import motion_adapter, get_pelvis_virtual, extract_yaw_rotation
+from BVH_Parser import bvh_parser, check_bvh_structure, motion_connect
 from Rendering import draw_humanoid, draw_virtual_root_axis
-from utils import draw_axes, set_lights
+from utils import draw_axes, set_lights, random_color
 import Events
 import UI
 
@@ -27,11 +27,13 @@ state = {
         'is_rotating': False,
         'is_translating': False,
         'stop': False,
-        'frame_idx': 0,
-        'frame_len': None,
+        #'frame_idx': 0,
+        #'frame_len': None,
         'root': None,
-        'motion_frames': None,
-        'loaded_file_path': None
+        'motion_frames': [],
+        'motion' : None,
+        'loaded_file_path': None,
+
     }
 
 def resize(width, height):
@@ -98,6 +100,9 @@ def main():
                 state['frame_idx'] = (state['frame_idx'] + 1) % state['frame_len']
                 previous_time = current_time
 
+                #import time
+                #time.sleep(1)
+
         imgui.new_frame()
         UI.draw_control_panel(state)
         UI.draw_file_loader(state)
@@ -108,20 +113,28 @@ def main():
                   state['center'].x, state['center'].y, state['center'].z,
                   state['upVector'].x, state['upVector'].y, state['upVector'].z)
         draw_axes()
-        if state['motion_frames'] and state['root']:
-            root_position, _ = motion_adapter(state['root'], state['motion_frames'][state['frame_idx']])
-            
-            draw_humanoid(root_position, state['root'])
-            
-            hip_node = state['root'].children[0]
-            local_kinetics = get_pelvis_virtual(hip_node.kinetics)
-    
-            global_kinetics = hip_node.kinetics
-            global_virtual = global_kinetics @ local_kinetics 
 
-            local_kinetics = extract_yaw_rotation(global_virtual, root_position*np.array([1,0,1]))
-            
-            draw_virtual_root_axis(local_kinetics)
+        if state['motion_frames'] and state['root']:
+            frame = state['motion_frames'][state['frame_idx']]
+            if frame.virtual_transform is None:
+                print(f"Frame {state['frame_idx']}: virtual_transform is None!")
+            else:
+                # 행렬의 4번째 열이 위치 정보입니다.
+                pos_from_matrix = glm.vec3(frame.virtual_transform[3])
+                if glm.length(pos_from_matrix) < 1e-4 and state['frame_idx'] > 10:  # 처음 몇 프레임 제외
+                    # 프레임 인덱스와 위치 정보를 출력
+                    print(
+                        f"Frame {state['frame_idx']}: Low translation in virtual_transform -> {pos_from_matrix.x:.2f}, {pos_from_matrix.y:.2f}, {pos_from_matrix.z:.2f}")
+            glPushMatrix()
+            draw_humanoid(state['root'], frame, random_color())
+
+            #hip_node = state['root'].children[0]
+            virtual_root_t = frame.virtual_transform
+            if virtual_root_t is None:
+                print("🚨 virtual_root_T is None! Can't draw axis.")
+            else:
+                draw_virtual_root_axis(virtual_root_t, random_color())
+            glPopMatrix()
 
         imgui.render()
         impl.render(imgui.get_draw_data())
@@ -134,15 +147,24 @@ def main():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("file_path")
+    parser.add_argument("file_paths", nargs=2)
     args = parser.parse_args()
 
+    root1, motion1 = bvh_parser(args.file_paths[0])
+    root2, motion2 = bvh_parser(args.file_paths[1])
 
-    root, motion_frames = bvh_parser(args.file_path)
-    state['frame_len'] = len(motion_frames)
-    check_bvh_structure(root, is_root=True)
+    check_bvh_structure(root1, is_root=True)
+    check_bvh_structure(root2, is_root=True)
 
-    state['root'] = root
-    state['motion_frames'] = motion_frames
+    # 모션 연결 (파라미터는 원하는 대로 조절)
+    connected_motion = motion_connect(motion1, motion2, root1, transition_frames=60)
+
+    # 이제 이 모션을 그려야 하므로, state에 등록
+    state['root'] = root1  # <- 어떤 골격으로 그릴지
+    state['motion'] = connected_motion
+    state['motion_frames'] = connected_motion.quaternion_frame  # <- 연결된 모션
+    # frame 개수 저장
+    state['frame_len'] = len(connected_motion)
+    state['frame_idx'] = 0  # 초기화
 
     main()
